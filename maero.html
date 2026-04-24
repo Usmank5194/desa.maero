@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RUMAH DATAku Desa Maero</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FIREBASE SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+    <style>
+        :root {
+            --primary: #007bff;
+            --primary-dark: #0056b3;
+            --primary-light: #e3f2fd;
+            --accent: #ffc107;
+            --text-dark: #2c3e50;
+            --text-light: #6c757d;
+            --bg-body: #f4f6f9;
+            --white: #ffffff;
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+            --radius: 12px;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; font-family:'Poppins',sans-serif; }
+        body { background:var(--bg-body); color:var(--text-dark); display:flex; min-height:100vh; overflow-x:hidden; }
+        body:not(.is-admin) .admin-only { display:none !important; }
+
+        /* LOADING OVERLAY */
+        #loadingOverlay {
+            position:fixed; top:0; left:0; width:100%; height:100%;
+            background:var(--bg-body); z-index:20000;
+            display:flex; justify-content:center; align-items:center; flex-direction:column; gap:15px;
+        }
+        #loadingOverlay .spinner { width:40px; height:40px; border:4px solid #ddd; border-top-color:var(--primary); border-radius:50%; animation:spin .7s linear infinite; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+
+        /* TOAST */
+        #toastBox { position:fixed; top:20px; right:20px; z-index:15000; display:flex; flex-direction:column; gap:8px; max-width:340px; }
+        .toast-item { padding:12px 18px; border-radius:10px; font-size:13px; font-weight:500; color:#fff; transform:translateX(120%); transition:transform .3s; box-shadow:var(--shadow-lg); }
+        .toast-item.show { transform:translateX(0); }
+        .toast-ok { background:#065f46; border:1px solid #10b981; }
+        .toast-err { background:#7f1d1d; border:1px solid #ef4444; }
+        .toast-info { background:#1e3a5f; border:1px solid #3b82f6; }
+
+        #loginOverlay {
+            position:fixed; top:0; left:0; width:100%; height:100%;
+            background:linear-gradient(135deg,#f5f7fa 0%,#c3cfe2 100%);
+            z-index:10000; display:flex; justify-content:center; align-items:center;
+        }
+        .login-card {
+            background:var(--white); padding:3rem; border-radius:var(--radius);
+            box-shadow:var(--shadow-lg); text-align:center; width:400px;
+            border-top:6px solid var(--primary);
+        }
+        .login-card img { width:100px; height:100px; margin-bottom:1.5rem; border-radius:50%; border:4px solid #f0f0f0; object-fit:contain; background:#fff; padding:5px; }
+        .form-input { width:100%; padding:12px; margin:10px 0; border:1px solid #ddd; border-radius:8px; font-size:1rem; }
+        .btn-full { width:100%; padding:12px; border:none; border-radius:8px; cursor:pointer; font-weight:600; font-size:1rem; transition:.3s; font-family:inherit; }
+        .btn-primary { background:var(--primary); color:white; }
+        .btn-primary:hover { background:var(--primary-dark); }
+        .btn-secondary { background:#6c757d; color:white; margin-top:10px; }
+        .btn-secondary:hover { background:#5a6268; }
+        .btn-sm { padding:5px 10px; font-size:.8rem; }
+
+        aside {
+            width:280px; background:var(--white); display:flex; flex-direction:column;
+            padding:1.5rem; position:fixed; height:100vh; z-index:100;
+            box-shadow:2px 0 10px rgba(0,0,0,.05); border-right:1px solid #eee;
+        }
+        .brand { text-align:center; margin-bottom:2rem; padding-bottom:1rem; border-bottom:1px solid #eee; }
+        .brand img { width:100%; max-width:180px; margin-bottom:10px; }
+        .brand h2 { font-size:1.1rem; color:var(--primary-dark); font-weight:700; margin-bottom:2px; }
+        .brand p { font-size:.8rem; color:var(--text-light); text-transform:uppercase; letter-spacing:1px; }
+        nav button {
+            background:none; border:none; width:100%; text-align:left;
+            padding:12px 15px; margin-bottom:5px; border-radius:8px;
+            color:var(--text-dark); font-weight:500; cursor:pointer;
+            display:flex; align-items:center; gap:12px; transition:.2s; font-size:.95rem;
+        }
+        nav button:hover { background:var(--primary-light); color:var(--primary); }
+        nav button.active { background:var(--primary); color:white; box-shadow:var(--shadow); }
+
+        main { margin-left:280px; padding:2rem; width:100%; max-width:1600px; }
+        header {
+            background:var(--white); padding:1.5rem 2rem; border-radius:var(--radius);
+            box-shadow:var(--shadow); margin-bottom:2rem;
+            display:flex; justify-content:space-between; align-items:center;
+            border-left:5px solid var(--accent);
+        }
+
+        /* ===== PERBAIKAN TRIPLE-LOCK: content-section ===== */
+        /* Lock 1: CSS aggressive — 7 property sekaligus untuk memastikan
+           elemen benar-benar tidak terlihat di semua browser/HP */
+        .content-section {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            position: absolute !important;
+            left: -9999px !important;
+            z-index: -1 !important;
+        }
+        /* Lock 2: Hanya section aktif yang tampil — override semua Lock 1 */
+        .content-section.active {
+            display: block !important;
+            visibility: visible !important;
+            height: auto !important;
+            overflow: visible !important;
+            opacity: 1 !important;
+            pointer-events: auto !important;
+            position: relative !important;
+            left: auto !important;
+            z-index: auto !important;
+            animation: slideUp .4s ease-out;
+        }
+        @keyframes slideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+
+        /* Extra Lock: hidden HTML attribute support */
+        .content-section[hidden] {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            overflow: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+            position: absolute !important;
+            left: -9999px !important;
+            z-index: -1 !important;
+        }
+
+        .card { background:var(--white); padding:1.5rem; border-radius:var(--radius); box-shadow:var(--shadow); margin-bottom:1.5rem; border:1px solid #eee; }
+        .card-header { border-bottom:1px solid #eee; padding-bottom:10px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+        .card-title { font-size:1.1rem; font-weight:600; color:var(--primary-dark); }
+        .grid-4 { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:1.5rem; margin-bottom:2rem; }
+        .stat-card { text-align:center; padding:2rem; }
+        .stat-number { font-size:2.5rem; font-weight:700; color:var(--primary); display:block; }
+        .stat-label { color:var(--text-light); font-size:.9rem; font-weight:500; }
+
+        .table-responsive { overflow-x:auto; }
+        table { width:100%; border-collapse:collapse; background:white; border-radius:8px; overflow:hidden; }
+        th,td { padding:12px 15px; text-align:left; border-bottom:1px solid #f0f0f0; font-size:.9rem; vertical-align:middle; }
+        th { background:#f8f9fa; color:var(--text-dark); font-weight:600; text-transform:uppercase; font-size:.8rem; }
+        tr:hover { background:#fcfcfc; }
+        .avatar-sm { width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid #eee; }
+
+        .form-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:1rem; margin-bottom:1rem; }
+        .form-group label { display:block; font-size:.85rem; font-weight:600; margin-bottom:5px; color:var(--text-dark); }
+        input,select,textarea { width:100%; padding:10px; border:1px solid #ced4da; border-radius:6px; font-size:.9rem; transition:.2s; font-family:inherit; }
+        input:focus,select:focus,textarea:focus { border-color:var(--primary); outline:none; box-shadow:0 0 0 3px rgba(0,123,255,.1); }
+
+        .chart-container { height:300px; position:relative; width:100%; }
+        .split-view { display:grid; grid-template-columns:1fr 1fr; gap:2rem; }
+        @media(max-width:992px) { .split-view { grid-template-columns:1fr; } }
+
+        .map-frame { width:100%; height:350px; border:0; border-radius:var(--radius); }
+        .org-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:1rem; }
+        .org-box { background:#f8f9fa; padding:1rem; border-radius:8px; text-align:center; border:1px solid #eee; }
+
+        .gallery-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:1.5rem; }
+        .gallery-item { background:white; border-radius:8px; overflow:hidden; box-shadow:var(--shadow); transition:.3s; position:relative; }
+        .gallery-item:hover { transform:translateY(-5px); }
+        .gallery-img { width:100%; height:180px; object-fit:cover; cursor:pointer; }
+        .gallery-info { padding:10px; }
+        .gallery-caption { font-size:.85rem; font-weight:600; display:block; margin-bottom:5px; }
+        .delete-btn { position:absolute; top:5px; right:5px; background:rgba(220,53,69,.9); color:white; border:none; width:25px; height:25px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; }
+
+        .tabs { display:flex; gap:5px; margin-bottom:1.5rem; border-bottom:2px solid #dee2e6; overflow-x:auto; }
+        .tab { padding:10px 20px; background:none; border:none; cursor:pointer; font-weight:500; color:var(--text-light); border-bottom:3px solid transparent; transition:.3s; font-family:inherit; }
+        .tab:hover { color:var(--primary); }
+        .tab.active { border-bottom-color:var(--primary); color:var(--primary); font-weight:600; }
+
+        .guest-entry { background:white; padding:15px; border-radius:8px; border-left:4px solid var(--accent); margin-bottom:10px; box-shadow:var(--shadow); }
+
+        .modal-fixed { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:10001; width:350px; border:3px solid var(--primary); }
+        .modal-fixed.active { display:block; }
+
+        @media(max-width:768px) {
+            aside { transform:translateX(-100%); transition:.3s; }
+            aside.active { transform:translateX(0); }
+            main { margin-left:0; padding:1rem; }
+            .mobile-toggle { display:block !important; position:fixed; top:20px; right:20px; z-index:200; background:var(--primary); color:white; border:none; width:50px; height:50px; border-radius:50%; box-shadow:var(--shadow-lg); font-size:1.2rem; cursor:pointer; }
+        }
+        @media(min-width:769px) { .mobile-toggle { display:none !important; } }
+
+        @media print {
+            aside,.mobile-toggle,#loginOverlay,#loadingOverlay,.admin-only,.btn,.tabs,#toastBox { display:none !important; }
+            main { margin:0; padding:0; width:100%; max-width:none; }
+            .card,.split-view { box-shadow:none; border:1px solid #ccc; break-inside:avoid; }
+            .chart-container { height:200px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- LOADING OVERLAY -->
+<div id="loadingOverlay">
+    <div class="spinner"></div>
+    <p style="color:var(--text-light);font-size:14px;">Menghubungkan ke database cloud...</p>
+</div>
+
+<!-- TOAST -->
+<div id="toastBox"></div>
+
+<!-- LOGIN OVERLAY -->
+<div id="loginOverlay" style="display:none;">
+    <div class="login-card">
+        <img src="logo_daerah.jpg" alt="Logo Daerah">
+        <h3 style="color:var(--primary-dark);margin-bottom:5px;">Login Admin</h3>
+        <p style="font-size:.8rem;color:#6c757d;margin-bottom:20px;">Rumah DATAku Desa Maero</p>
+        <input type="text" id="username" class="form-input" placeholder="Username">
+        <input type="password" id="password" class="form-input" placeholder="Password">
+        <button type="button" class="btn-full btn-primary" onclick="loginAdmin()">MASUK ADMIN</button>
+        <button type="button" class="btn-full btn-secondary" onclick="enterApp(false)">MASUK TAMU (Publik)</button>
+        <div id="loginError" style="color:#dc3545;font-weight:600;margin-top:10px;display:none;">Username/Password Salah!</div>
+    </div>
+</div>
+
+<button class="mobile-toggle" onclick="document.querySelector('aside').classList.toggle('active')"><i class="fas fa-bars"></i></button>
+
+<!-- SIDEBAR -->
+<aside>
+   <div class="brand">
+    <img src="https://z-cdn-media.chatglm.cn/files/d1ed4cba-4886-4609-99fd-19f9d7f6fc4a.png?auth_key=1876241057-7f4e76dcb0db461ca9d6543e83ae1aa8-0-76b76d4a6221c746a1f2a8aaebef6f68" 
+         class="logo-img" 
+         alt="Rumah Dataku" 
+         style="width: 100%; max-width: 180px; margin-bottom: 10px; object-fit: contain;">
+    <h2>RUMAH DATAku</h2>
+    <p>Desa Maero</p>
+</div>
+    <nav>
+        <button onclick="nav('dashboard',this)" class="active"><i class="fas fa-home"></i> Dashboard</button>
+        <button onclick="nav('profil',this)"><i class="fas fa-landmark"></i> Profil Wilayah</button>
+        <button onclick="nav('penduduk',this)"><i class="fas fa-users"></i> Data Penduduk</button>
+        <button onclick="nav('poktan',this)"><i class="fas fa-leaf"></i> Data POKTAN</button>
+        <button onclick="nav('kegiatan_pkk',this)"><i class="fas fa-heart"></i> Kegiatan PKK</button>
+        <button onclick="nav('galeri',this)"><i class="fas fa-images"></i> Galeri & Data Lain</button>
+        <button onclick="nav('rencana',this)"><i class="fas fa-clipboard-check"></i> Rencana Aksi</button>
+        <button onclick="nav('saran',this)"><i class="fas fa-comments"></i> Saran & Masukan</button>
+        <div style="margin-top:auto;border-top:1px solid #eee;padding-top:10px;">
+            <button id="navLoginBtn" onclick="showLoginScreen()" style="color:var(--primary);font-weight:600;"><i class="fas fa-user-lock"></i> Login Admin</button>
+            <button id="navLogoutBtn" class="admin-only" onclick="logout()" style="color:#dc3545;"><i class="fas fa-sign-out-alt"></i> Keluar Admin</button>
+        </div>
+    </nav>
+</aside>
+
+<!-- MAIN CONTENT -->
+<main>
+    <header>
+        <div>
+            <h2 id="pageTitle" style="color:var(--primary-dark);">Dashboard</h2>
+            <p style="font-size:.9rem;color:#6c757d;">Sistem Informasi Digital Desa Maero</p>
+        </div>
+        <div class="admin-only">
+            <button class="btn-full btn-primary" style="width:auto;padding:8px 15px;" onclick="window.print()"><i class="fas fa-print"></i> Cetak</button>
+        </div>
+    </header>
+
+    <!-- 1. DASHBOARD -->
+    <div id="dashboard" class="content-section active">
+        <div class="grid-4">
+            <div class="card stat-card"><span class="stat-number" id="d_jiwa">0</span><span class="stat-label">Total Jiwa</span></div>
+            <div class="card stat-card"><span class="stat-number" id="d_kk">0</span><span class="stat-label">Jumlah KK</span></div>
+            <div class="card stat-card"><span class="stat-number" id="d_kader">0</span><span class="stat-label">Total Kader</span></div>
+            <div class="card stat-card"><span class="stat-number" id="d_posyandu">0</span><span class="stat-label">Posyandu Aktif</span></div>
+        </div>
+        <div class="split-view">
+            <div class="card"><h4 class="card-title">Komposisi Gender</h4><div class="chart-container"><canvas id="chartGender"></canvas></div></div>
+            <div class="card"><h4 class="card-title">Piramida Penduduk</h4><div class="chart-container"><canvas id="chartPiramida"></canvas></div></div>
+        </div>
+    </div>
+
+    <!-- 2. PROFIL WILAYAH -->
+    <div id="profil" class="content-section" hidden>
+        <div class="card" style="border-top:5px solid var(--accent);">
+            <div class="card-header"><h4 class="card-title">Sambutan Kepala Dinas PPKB</h4></div>
+            <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;">
+               <div style="flex: 0 0 200px; text-align: center;">
+    <img src="https://z-cdn-media.chatglm.cn/files/242d7c34-6bae-4e6d-a4fb-6ca4421fc48f.jpeg?auth_key=1876241057-12d0be64471b48d981f9e95b806d0e8d-0-26b13f3a196c6ed3f57aa1e2c1ef87f6" 
+         alt="Kadis PPKB" 
+         style="width: 100%; border-radius: 8px; border: 1px solid #ddd; box-shadow: var(--shadow); object-fit: cover;">
+    <p style="font-size: 0.85rem; font-weight: bold; margin-top: 10px;">Dr. ST. MERIAM. S.STP., M.Si.</p>
+    <p style="font-size: 0.75rem; color: #666;">Kepala Dinas PPKB<br>Kabupaten Jeneponto</p>
+</div>
+                <div style="flex:1;">
+                    <h3 style="color:var(--primary-dark);margin-bottom:10px;">Assalamualaikum Warahmatullahi Wabarakatuh</h3>
+                    <p style="margin-bottom:10px;font-size:.95rem;line-height:1.6;"> Salam <strong>BAHAGIA</strong> Untuk kita semua....,Melalui <strong>Rumah DATAku</strong> ini, kami berkomitmen untuk mewujudkan transparansi data yang akurat, terpercaya, dan mudah diakses oleh seluruh masyarakat Desa Maero. Rumah DATAku hadir sebagai pusat informasi dan layanan yang mendukung perencanaan pembangunan berbasis data, serta memberikan kemudahan bagi masyarakat dalam memperoleh layanan yang cepat, tepat, dan terintegrasi.</p>
+                   <div style="background:#fff3cd; padding:20px; border-radius:8px; border-left:4px solid #ffc107; margin-top:15px;">
+    
+    <h4 style="color:#856404; margin-top:0; margin-bottom:15px;">VISI MISI Rumah DATAku:</h4>
+    
+    <div style="font-size:.9rem; color:#333; margin-bottom:20px; line-height:1.6;">
+        <strong>Visi:</strong><br>
+        Terwujudnya Desa Maero yang transparan, responsif, dan maju melalui pemanfaatan data yang akurat dan terintegrasi.
+    </div>
+
+    <div style="font-size:.9rem; color:#333; margin-bottom:20px;">
+        <strong>Misi:</strong>
+        <ul style="margin-top:8px; padding-left:20px; line-height:1.8;">
+            <li>Menyediakan data desa yang valid, mutakhir, dan dapat diakses secara terbuka oleh masyarakat.</li>
+            <li>Meningkatkan kualitas pelayanan publik melalui sistem informasi yang cepat, mudah, dan terintegrasi.</li>
+            <li>Mendorong partisipasi masyarakat dalam pemanfaatan dan pengawasan data pembangunan desa.</li>
+            <li>Mendukung pengambilan kebijakan berbasis data untuk pembangunan yang tepat sasaran.</li>
+            <li>Mengembangkan literasi data di tingkat desa guna menciptakan masyarakat yang sadar informasi.</li>
+        </ul>
+    </div>
+
+    <div style="font-size:.9rem; color:#333; line-height:1.6; text-align: justify;">
+        Dengan hadirnya Rumah DATAku, diharapkan terbangun kepercayaan publik serta tercipta tata kelola pemerintahan desa yang lebih transparan, inovatif, dan berorientasi pada kebutuhan masyarakat.
+    </div>
+
+</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- KARTU BIRU, PETA, & 3 TABEL: DIHAPUS DARI HTML.
+             Semua elemen profil-only diciptakan oleh JavaScript
+             hanya saat menu Profil Wilayah diklik. Lihat injectProfilElements() -->
+        <div id="profilDynamicSlot"></div>
+    </div>
+
+    <!-- 3. DATA PENDUDUK -->
+    <div id="penduduk" class="content-section" hidden>
+        <div class="tabs">
+            <button class="tab active" onclick="subTab('p_kuantitas',this)">1. Data Kuantitas</button>
+            <button class="tab" onclick="subTab('p_kualitas',this)">2. Data Kualitas</button>
+            <button class="tab" onclick="subTab('p_sdm',this)">3. SDM & Pendukung</button>
+        </div>
+        <!-- KUANTITAS -->
+        <div id="p_kuantitas" class="sub-content">
+            <div class="card admin-only">
+                <h4 class="card-title">Input Data Kuantitas</h4>
+                <div class="form-row">
+                    <div class="form-group"><label>Jumlah KK</label><input type="number" id="in_kk"></div>
+                    <div class="form-group"><label>Laki-laki</label><input type="number" id="in_lk" oninput="hitungJiwa()"></div>
+                    <div class="form-group"><label>Perempuan</label><input type="number" id="in_pr" oninput="hitungJiwa()"></div>
+                    <div class="form-group" style="background:#e3f2fd;padding:10px;border-radius:6px;display:flex;align-items:center;">
+                        <label style="color:var(--primary-dark);font-weight:700;">Total Jiwa:</label>
+                        <input type="text" id="in_jiwa" readonly style="background:transparent;border:none;font-weight:700;color:var(--primary);font-size:1.1rem;">
+                    </div>
+                </div>
+                <div style="margin:10px 0;"><strong>Kelompok Umur (Tahun)</strong></div>
+                <div class="form-row" style="grid-template-columns:repeat(5,1fr);font-size:.8rem;">
+                    <div class="form-group"><label>0-4</label><input type="number" class="age-input" data-age="0-4"></div>
+                    <div class="form-group"><label>5-9</label><input type="number" class="age-input" data-age="5-9"></div>
+                    <div class="form-group"><label>10-14</label><input type="number" class="age-input" data-age="10-14"></div>
+                    <div class="form-group"><label>15-19</label><input type="number" class="age-input" data-age="15-19"></div>
+                    <div class="form-group"><label>20-24</label><input type="number" class="age-input" data-age="20-24"></div>
+                    <div class="form-group"><label>25-29</label><input type="number" class="age-input" data-age="25-29"></div>
+                    <div class="form-group"><label>30-34</label><input type="number" class="age-input" data-age="30-34"></div>
+                    <div class="form-group"><label>35-39</label><input type="number" class="age-input" data-age="35-39"></div>
+                    <div class="form-group"><label>40-44</label><input type="number" class="age-input" data-age="40-44"></div>
+                    <div class="form-group"><label>45-49</label><input type="number" class="age-input" data-age="45-49"></div>
+                    <div class="form-group"><label>50-54</label><input type="number" class="age-input" data-age="50-54"></div>
+                    <div class="form-group"><label>55-59</label><input type="number" class="age-input" data-age="55-59"></div>
+                    <div class="form-group"><label>60-64</label><input type="number" class="age-input" data-age="60-64"></div>
+                    <div class="form-group"><label>65-69</label><input type="number" class="age-input" data-age="65-69"></div>
+                    <div class="form-group"><label>70-74</label><input type="number" class="age-input" data-age="70-74"></div>
+                    <div class="form-group"><label>75+</label><input type="number" class="age-input" data-age="75+"></div>
+                </div>
+                <div class="form-group"><label>Catatan</label><textarea id="in_note_kuantitas" rows="2"></textarea></div>
+                <button class="btn-full btn-primary" onclick="saveKuantitas()">Simpan Data</button>
+            </div>
+            <div class="split-view">
+                <div class="card"><h4 class="card-title">Tabel Data Umur</h4><div class="table-responsive"><table id="tableUmur"></table></div></div>
+                <div class="card"><h4 class="card-title">Grafik Piramida</h4><div class="chart-container"><canvas id="chartKuantitasDetail"></canvas></div></div>
+            </div>
+        </div>
+        <!-- KUALITAS -->
+        <div id="p_kualitas" class="sub-content" style="display:none;">
+            <div class="card admin-only">
+                <h4 class="card-title">Input Data Kesehatan & KB</h4>
+                <div class="form-row">
+                    <div class="form-group"><label>KB Baru</label><input type="number" id="kb_baru"></div>
+                    <div class="form-group"><label>Ganti Cara</label><input type="number" id="kb_ganti"></div>
+                    <div class="form-group"><label>Ulangan</label><input type="number" id="kb_ulang"></div>
+                    <div class="form-group"><label>Bumil</label><input type="number" id="k_bumil"></div>
+                    <div class="form-group"><label>Baduta</label><input type="number" id="k_baduta"></div>
+                    <div class="form-group"><label>Balita</label><input type="number" id="k_balita"></div>
+                </div>
+                <button class="btn-full btn-primary" onclick="saveKualitasKesehatan()">Simpan Kesehatan</button>
+            </div>
+            <div class="split-view">
+                <div class="card"><h4 class="card-title">Rekap Data Kesehatan</h4><div class="table-responsive"><table id="tableKesehatan"></table></div></div>
+                <div class="card"><h4 class="card-title">Grafik Kesehatan</h4><div class="chart-container"><canvas id="chartKesehatan"></canvas></div></div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Fasilitas Kesehatan & Umum</h4>
+                    <button class="btn-full btn-primary btn-sm admin-only" onclick="addFasum()">+ Tambah</button>
+                </div>
+                <div class="admin-only" style="display:grid;grid-template-columns:2fr 2fr 2fr auto;gap:10px;margin-bottom:10px;">
+                    <input type="text" id="fasum_name" placeholder="Nama">
+                    <select id="fasum_type"><option value="Posyandu">Posyandu</option><option value="Masjid">Masjid</option><option value="Sekolah">Sekolah</option><option value="Lainnya">Lainnya</option></select>
+                    <input type="text" id="fasum_addr" placeholder="Alamat">
+                </div>
+                <div class="table-responsive"><table id="tableFasum"><thead><tr><th>Jenis</th><th>Nama</th><th>Lokasi</th><th class="admin-only">Aksi</th></tr></thead><tbody></tbody></table></div>
+            </div>
+            <div class="split-view">
+                <div class="card"><h4 class="card-title">Data Pendidikan</h4><div class="table-responsive"><table id="tablePendidikan"></table></div><button class="btn-full btn-primary admin-only" style="margin-top:10px;" onclick="editPendidikan()">Edit</button></div>
+                <div class="card"><h4 class="card-title">Pekerjaan</h4><div class="chart-container"><canvas id="chartPekerjaan"></canvas></div><button class="btn-full btn-primary admin-only" style="margin-top:10px;" onclick="editPekerjaan()">Edit</button></div>
+            </div>
+        </div>
+        <!-- SDM -->
+        <div id="p_sdm" class="sub-content" style="display:none;">
+            <div class="card admin-only">
+                <h4 class="card-title">Input SDM Pendukung</h4>
+                <div class="form-row">
+                    <div class="form-group"><label>Kader KB</label><input type="number" id="sdm_kb"></div>
+                    <div class="form-group"><label>Kader PKK</label><input type="number" id="sdm_pkk"></div>
+                    <div class="form-group"><label>Kader TPK</label><input type="number" id="sdm_tpk"></div>
+                    <div class="form-group"><label>Kader Posyandu</label><input type="number" id="sdm_pos"></div>
+                    <div class="form-group"><label>Lainnya</label><input type="number" id="sdm_lain"></div>
+                </div>
+                <button class="btn-full btn-primary" onclick="saveSDM()">Simpan SDM</button>
+            </div>
+            <div class="card"><h4 class="card-title">Data SDM</h4><div class="table-responsive"><table id="tableSDM"><thead><tr><th>Kategori</th><th>Jumlah</th></tr></thead><tbody></tbody></table></div></div>
+        </div>
+    </div>
+
+    <!-- 4. DATA POKTAN -->
+    <div id="poktan" class="content-section" hidden>
+        <div class="card admin-only">
+            <h4 class="card-title">Input Data POKTAN</h4>
+            <div class="form-group"><label>IKUT Bina Keluarga Balita (BKB)</label><input type="number" id="poktan_bkb"></div>
+            <div class="form-group"><label>IKUT Bina Keluarga Remaja (BKR)</label><input type="number" id="poktan_bkr"></div>
+            <div class="form-group"><label>IKUT Bina Keluarga Lansia (BKL)</label><input type="number" id="poktan_bkl"></div>
+            <div class="form-group"><label>IKUT SATYAGATRA KENCANA (PPKS)</label><input type="number" id="poktan_ks"></div>
+            <div style="margin-top:20px;padding-top:20px;border-top:2px dashed #ccc;">
+                <h5 style="color:var(--primary-dark);margin-bottom:15px;">Menu Quick Win</h5>
+                <div class="form-row">
+                    <div class="form-group"><label>Genting</label><input type="number" id="poktan_genting"></div>
+                    <div class="form-group"><label>Tamasya</label><input type="number" id="poktan_tamasya"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Sidaya</label><input type="number" id="poktan_sidaya"></div>
+                    <div class="form-group"><label>Gati</label><input type="number" id="poktan_gati"></div>
+                </div>
+            </div>
+            <button class="btn-full btn-primary" style="margin-top:15px;" onclick="savePoktan()">Simpan Data POKTAN</button>
+        </div>
+        <div class="card">
+            <h4 class="card-title">Rekap Data Kelompok Kegiatan</h4>
+            <div class="table-responsive"><table id="tablePoktan"><thead><tr><th>Kelompok</th><th>Jumlah Peserta/Anggota</th></tr></thead><tbody></tbody></table></div>
+        </div>
+    </div>
+
+    <!-- 5. KEGIATAN PKK -->
+    <div id="kegiatan_pkk" class="content-section" hidden>
+        <div class="card admin-only">
+            <h4 class="card-title">Tambah Laporan Kegiatan PKK</h4>
+            <div class="form-row">
+                <div class="form-group"><label>Tanggal Kegiatan</label><input type="date" id="pkk_date"></div>
+                <div class="form-group"><label>Judul Kegiatan</label><input type="text" id="pkk_title" placeholder="Contoh: Posyandu Balita Dusun 1"></div>
+            </div>
+            <div class="form-group"><label>Deskripsi / Laporan Singkat</label><textarea id="pkk_desc" rows="3" placeholder="Jelaskan kegiatan yang dilakukan..."></textarea></div>
+            <div class="form-group"><label>Foto Kegiatan</label><input type="file" id="pkk_photo" accept="image/*" style="padding:20px;background:#f8f9fa;border:2px dashed #ccc;"></div>
+            <button class="btn-full btn-primary" onclick="addPKKReport()">Simpan Laporan PKK</button>
+        </div>
+        <div id="pkk_list" class="gallery-grid" style="margin-top:2rem;"></div>
+    </div>
+
+    <!-- 6. GALERI & DATA LAINNYA -->
+    <div id="galeri" class="content-section" hidden>
+        <div class="card">
+            <div class="card-header"><h4 class="card-title">Galeri Kegiatan</h4></div>
+            <div class="admin-only" style="margin-bottom:15px;">
+                <div class="form-group"><label>Deskripsi</label><input type="text" id="gal_desc"></div>
+                <div class="form-group"><label>Foto (Bisa Banyak)</label><input type="file" id="gal_files" multiple accept="image/*" style="padding:20px;background:#f8f9fa;"></div>
+                <button class="btn-full btn-primary" onclick="uploadGallery()">Upload Foto</button>
+            </div>
+            <div class="gallery-grid" id="galleryContainer"></div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <h4 class="card-title">Data Lainnya (Dinas Sosial, Pertanian, dll)</h4>
+                <button class="btn-full btn-primary btn-sm admin-only" onclick="addDataLain()">+ Tambah Data</button>
+            </div>
+            <div class="admin-only" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;margin-bottom:10px;">
+                <input type="text" id="lain_judul" placeholder="Judul Data (Cth: Bansos)">
+                <input type="text" id="lain_sumber" placeholder="Sumber (Cth: Dinas Sosial)">
+                <input type="text" id="lain_isi" placeholder="Isi Data">
+            </div>
+            <div class="table-responsive"><table id="tableLain"><thead><tr><th>Judul</th><th>Sumber</th><th>Isi Data</th><th class="admin-only">Aksi</th></tr></thead><tbody></tbody></table></div>
+        </div>
+    </div>
+
+    <!-- 7. RENCANA AKSI -->
+    <div id="rencana" class="content-section" hidden>
+        <div class="card admin-only">
+            <h4 class="card-title">Input Rencana Aksi</h4>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Pelaku</label>
+                    <select id="rencana_pelaku">
+                        <option value="POKJA">POKJA Kampung KB</option>
+                        <option value="Penyuluh KB">Penyuluh KB</option>
+                        <option value="Babinsa">Babinsa</option>
+                        <option value="Bhabinkamtibmas">Bhabinkamtibmas</option>
+                        <option value="Perangkat Desa/Kel">Perangkat Desa/Kel</option>
+                        <option value="Kader IMP">Kader IMP</option>
+                        <option value="Lainnya">Lainnya</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Rencana</label><input type="text" id="rencana_text"></div>
+                <div class="form-group"><label>Waktu</label><input type="date" id="rencana_date"></div>
+                <button class="btn-full btn-primary" onclick="addRencana()">Tambah Rencana</button>
+            </div>
+        </div>
+        <div class="card">
+            <h4 class="card-title">Daftar Rencana Aksi</h4>
+            <div class="table-responsive"><table id="tableRencana"><thead><tr><th>Pelaku</th><th>Rencana Kegiatan</th><th>Waktu</th><th class="admin-only">Aksi</th></tr></thead><tbody></tbody></table></div>
+        </div>
+    </div>
+
+    <!-- 8. SARAN MASUKAN -->
+    <div id="saran" class="content-section" hidden>
+        <div class="card">
+            <h4 class="card-title">Tulis Saran</h4>
+            <div class="form-group"><label>Nama</label><input type="text" id="guest_name"></div>
+            <div class="form-group"><label>Pesan</label><textarea id="guest_msg" rows="3"></textarea></div>
+            <button class="btn-full btn-primary" onclick="addSaran()">Kirim</button>
+        </div>
+        <div id="saranList"></div>
+    </div>
+</main>
+
+<!-- MODALS -->
+<div id="modalPemerintah" class="card modal-fixed">
+    <h4 class="card-title">Tambah Perangkat Desa/Kel</h4>
+    <div class="form-group"><label>Nama</label><input type="text" id="pem_nama"></div>
+    <div class="form-group"><label>Jabatan</label><input type="text" id="pem_jabatan" placeholder="Contoh: Kepala Dusun"></div>
+    <div class="form-group"><label>Foto</label><input type="file" id="pem_foto" accept="image/*"></div>
+    <div style="display:flex;gap:10px;"><button class="btn-full btn-primary" onclick="savePemerintah()">Simpan</button><button class="btn-full btn-secondary" onclick="closeModal('modalPemerintah')">Batal</button></div>
+</div>
+<div id="modalPokja" class="card modal-fixed">
+    <h4 class="card-title">Tambah Pengurus POKJA</h4>
+    <div class="form-group"><label>Nama</label><input type="text" id="pokja_nama"></div>
+    <div class="form-group"><label>Jabatan/Seksi</label>
+        <select id="pokja_jabatan"><option value="Pembina">Pembina</option><option value="Ketua">Ketua</option><option value="Sekretaris">Sekretaris</option><option value="Bendahara">Bendahara</option><option value="Seksi">Seksi (Lainnya)</option></select>
+        <input type="text" id="pokja_seksi" placeholder="Nama Seksi" style="margin-top:5px;display:none;">
+    </div>
+    <div class="form-group"><label>Foto</label><input type="file" id="pokja_foto" accept="image/*"></div>
+    <div style="display:flex;gap:10px;"><button class="btn-full btn-primary" onclick="savePokja()">Simpan</button><button class="btn-full btn-secondary" onclick="closeModal('modalPokja')">Batal</button></div>
+</div>
+<div id="modalRumahData" class="card modal-fixed">
+    <h4 class="card-title">Tambah Pengurus RUMAH DATAku</h4>
+    <div class="form-group"><label>Nama</label><input type="text" id="rd_nama"></div>
+    <div class="form-group"><label>Jabatan/Seksi</label>
+        <select id="rd_jabatan"><option value="Pembina">Pembina</option><option value="Ketua">Ketua</option><option value="Sekretaris">Sekretaris</option><option value="Bendahara">Bendahara</option><option value="Seksi Penyediaan Data">Seksi Penyediaan Data</option><option value="Seksi Perubahan Perilaku">Seksi Perubahan Perilaku</option><option value="Seksi Layanan & Rujukan">Seksi Layanan & Rujukan</option><option value="Seksi Penataan Lingkungan">Seksi Penataan Lingkungan</option></select>
+    </div>
+    <div class="form-group"><label>Foto</label><input type="file" id="rd_foto" accept="image/*"></div>
+    <div style="display:flex;gap:10px;"><button class="btn-full btn-primary" onclick="saveRumahData()">Simpan</button><button class="btn-full btn-secondary" onclick="closeModal('modalRumahData')">Batal</button></div>
+</div>
+
+<script>
+// =============================================
+// FIREBASE INIT
+// =============================================
+const firebaseConfig = {
+    apiKey: "AIzaSyAt7_P1BaWEQhvzmnf0IzmAg86IKqpeBr0",
+    authDomain: "rdk-kalumpangloe.firebaseapp.com",
+    projectId: "rdk-kalumpangloe",
+    storageBucket: "rdk-kalumpangloe.firebasestorage.app",
+    messagingSenderId: "262824037626",
+    appId: "1:262824037626:web:7e17ef676c8558d3594d43",
+    measurementId: "G-FBEZ56MVWK"
+};
+firebase.initializeApp(firebaseConfig);
+const fsdb = firebase.firestore();
+
+// =============================================
+// STATE
+// =============================================
+let cfg = {
+    kk:0, lk:0, pr:0, umur:{}, note:'',
+    kesehatan:{baru:0,ganti:0,ulang:0,bumil:0,baduta:0,balita:0},
+    pendidikan:{sd:0,smp:0,sma:0,pt:0},
+    pekerjaan:{Petani:0,Nelayan:0,Buruh:0,Wiraswasta:0,PNS:0,Lainnya:0},
+    sdm:{kb:0,pkk:0,tpk:0,pos:0,lain:0},
+    poktan:{bkb:0,bkr:0,bkl:0,ks:0,genting:0,tamasya:0,sidaya:0,gati:0},
+    mapLink:''
+};
+let arrData = {
+    pemerintah:[], pokja:[], rumahdata:[], fasum:[],
+    pkk_reports:[], galeri:[], rencana:[], saran:[], lainnya:[]
+};
+let listeners = [];
+let dataReady = false;
+
+// =============================================
+// TOAST
+// =============================================
+function toast(msg, type='ok') {
+    const box = document.getElementById('toastBox');
+    const el = document.createElement('div');
+    el.className = 'toast-item toast-' + type;
+    el.innerHTML = '<i class="fas ' + ({ok:'fa-check-circle',err:'fa-exclamation-circle',info:'fa-info-circle'}[type]||'fa-info-circle') + '"></i> ' + msg;
+    box.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 3500);
+}
+
+// =============================================
+// COMPRESS IMAGE
+// =============================================
+function compressImg(file, maxW=400, quality=0.4) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = e => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let w = img.width, h = img.height;
+                if (w > maxW) { h = (maxW/w)*h; w = maxW; }
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                const result = canvas.toDataURL('image/jpeg', quality);
+                if (result.length > 900000) reject('Foto terlalu besar, gunakan foto yang lebih kecil');
+                else resolve(result);
+            };
+            img.onerror = () => reject('Gagal memuat foto');
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// =============================================
+// FIRESTORE: LISTENERS
+// =============================================
+function startListeners() {
+    listeners.push(
+        fsdb.collection('Maero_config').doc('main').onSnapshot(doc => {
+            if (doc.exists) {
+                const d = doc.data();
+                cfg.kk = d.kk||0; cfg.lk = d.lk||0; cfg.pr = d.pr||0;
+                cfg.umur = d.umur||{}; cfg.note = d.note||'';
+                cfg.kesehatan = d.kesehatan||{baru:0,ganti:0,ulang:0,bumil:0,baduta:0,balita:0};
+                cfg.pendidikan = d.pendidikan||{sd:0,smp:0,sma:0,pt:0};
+                cfg.pekerjaan = d.pekerjaan||{Petani:0,Nelayan:0,Buruh:0,Wiraswasta:0,PNS:0,Lainnya:0};
+                cfg.sdm = d.sdm||{kb:0,pkk:0,tpk:0,pos:0,lain:0};
+                cfg.poktan = d.poktan||{bkb:0,bkr:0,bkl:0,ks:0,genting:0,tamasya:0,sidaya:0,gati:0};
+                cfg.mapLink = d.mapLink||'';
+            }
+            refreshConfigUI();
+        }, err => console.error('Config listener error:', err))
+    );
+
+    const collections = {
+        pemerintah:'Maero_pemerintah', pokja:'Maero_pokja', rumahdata:'Maero_rumahdata',
+        fasum:'Maero_fasum', pkk_reports:'Maero_pkk', galeri:'Maero_galeri',
+        rencana:'Maero_rencana', saran:'Maero_saran', lainnya:'Maero_lainnya'
+    };
+    Object.entries(collections).forEach(([key, colName]) => {
+        listeners.push(
+            fsdb.collection(colName).orderBy('createdAt','desc').onSnapshot(snapshot => {
+                arrData[key] = snapshot.docs.map(doc => ({id:doc.id, ...doc.data()}));
+                refreshArrayUI(key);
+            }, err => console.error(colName + ' listener error:', err))
+        );
+    });
+
+    setTimeout(() => { dataReady = true; }, 1500);
+}
+
+function detachListeners() {
+    listeners.forEach(unsub => unsub());
+    listeners = [];
+}
+
+// =============================================
+// SAVE CONFIG
+// =============================================
+async function saveConfig() {
+    try {
+        await fsdb.collection('Maero_config').doc('main').set(cfg, {merge:true});
+        toast('Data berhasil disimpan ke cloud!');
+    } catch(e) { toast('Gagal simpan: ' + e.message, 'err'); }
+}
+
+// =============================================
+// ADD/DEL DOC
+// =============================================
+async function addDoc(colName, data) {
+    try {
+        data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        await fsdb.collection(colName).add(data);
+        return true;
+    } catch(e) { toast('Gagal: ' + e.message, 'err'); return false; }
+}
+
+async function delDoc(colName, docId) {
+    try {
+        await fsdb.collection(colName).doc(docId).delete();
+    } catch(e) { toast('Gagal hapus: ' + e.message, 'err'); }
+}
+
+// =============================================
+// REFRESH UI: CONFIG
+// =============================================
+function refreshConfigUI() {
+    loadKuantitas(); loadKualitas(); loadSDM(); loadPoktan(); loadMap();
+    updateDashboard(); renderCharts();
+    const lo = document.getElementById('loadingOverlay');
+    if (lo) lo.style.display = 'none';
+}
+
+function refreshArrayUI(key) {
+    const map = {
+        pemerintah: loadPemerintah, pokja: loadPokja, rumahdata: loadRumahData,
+        fasum: loadFasum, pkk_reports: loadPKKReports, galeri: loadGallery,
+        rencana: loadRencana, saran: loadSaran, lainnya: loadDataLain
+    };
+    if (map[key]) map[key]();
+    if (key === 'fasum') updateDashboard();
+}
+
+// =============================================
+// LOGIN & AUTH
+// =============================================
+function loginAdmin() {
+    var u = document.getElementById('username').value.trim();
+    var p = document.getElementById('password').value.trim();
+    if(u==='admin' && p==='Maero123') { enterApp(true); }
+    else { document.getElementById('loginError').style.display='block'; toast('Login Gagal!','err'); }
+}
+function showLoginScreen() { document.getElementById('loginOverlay').style.display='flex'; }
+function enterApp(isAdmin) {
+    document.getElementById('loginOverlay').style.display='none';
+    updateAuthUI(isAdmin);
+    if(isAdmin) { document.body.classList.add('is-admin'); sessionStorage.setItem('role','admin'); toast('Selamat Datang, Admin!'); }
+    else { sessionStorage.setItem('role','guest'); toast('Mode Tamu Diaktifkan','info'); }
+    nav('dashboard', document.querySelector('nav button'));
+}
+function logout() { if(confirm('Keluar dari aplikasi?')) { sessionStorage.clear(); location.reload(); } }
+function updateAuthUI(isAdmin) {
+    const lb = document.getElementById('navLoginBtn');
+    const lo = document.getElementById('navLogoutBtn');
+    if(lb) lb.style.display = isAdmin ? 'none' : 'flex';
+    if(lo) lo.style.display = isAdmin ? 'flex' : 'none';
+}
+
+// =============================================
+// NAVIGASI — SUPER DIPERKUAT (inline style override)
+// =============================================
+// PERBAIKAN BESAR: Menggunakan cssText dengan display:none langsung
+// di setiap section, TIDAK bergantung pada CSS class sama sekali.
+// Ini menjamin elemen tersembunyi di SEMUA browser termasuk mobile WebView.
+// =============================================
+// TRACKER: section mana yang sedang aktif
+// =============================================
+var _activeSectionId = 'dashboard';
+
+function nav(id, btn) {
+    // Catat section aktif
+    _activeSectionId = id;
+
+    // Langkah 1: Sembunyikan SEMUA content section
+    // Gunakan kombinasi: classList + hidden attribute + inline style fallback
+    var allSections = document.querySelectorAll('.content-section');
+    for (var i = 0; i < allSections.length; i++) {
+        allSections[i].classList.remove('active');
+        allSections[i].setAttribute('hidden', '');
+    }
+
+    // Langkah 2: Tampilkan hanya section yang dipilih
+    var targetSection = document.getElementById(id);
+    if (targetSection) {
+        targetSection.classList.add('active');
+        targetSection.removeAttribute('hidden');
+    }
+
+    // Langkah 3: Update active state pada tombol navigasi
+    var navButtons = document.querySelectorAll('nav > button');
+    for (var j = 0; j < navButtons.length; j++) {
+        navButtons[j].classList.remove('active');
+    }
+    if (btn) btn.classList.add('active');
+
+    // Langkah 4: Update judul halaman
+    var titles = {
+        dashboard:'Dashboard', profil:'Profil Wilayah', penduduk:'Data Penduduk',
+        poktan:'Data POKTAN', kegiatan_pkk:'Kegiatan PKK', galeri:'Galeri & Data Lain',
+        rencana:'Rencana Aksi', saran:'Saran & Masukan'
+    };
+    document.getElementById('pageTitle').innerText = titles[id] || 'Dashboard';
+
+    // Langkah 5: Scroll ke atas saat pindah halaman
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Langkah 6: INJECT / REMOVE elemen Profil (kartu biru & peta)
+    if (id === 'profil') {
+        injectProfilElements();  // BUAT kartu biru & peta saat masuk profil
+    } else {
+        removeProfilElements();  // HAPUS kartu biru & peta saat keluar profil
+    }
+
+    // Langkah 7: Lock 3 — pastikan tidak ada section lain yang bocor
+    setTimeout(enforceVisibility, 50);
+    setTimeout(enforceVisibility, 200);
+}
+
+// =============================================
+// LOCK 3: PERIODIC ENFORCEMENT
+// Setiap 500ms, pastikan HANYA section aktif yang tampil.
+// Ini jaminan terakhir jika ada bug browser atau Firebase listener
+// yang secara tidak sengaja menampilkan section lain.
+// =============================================
+function enforceVisibility() {
+    var allSections = document.querySelectorAll('.content-section');
+    for (var i = 0; i < allSections.length; i++) {
+        var sec = allSections[i];
+        var isActive = sec.classList.contains('active');
+        var sectionId = sec.getAttribute('id');
+
+        if (isActive && sectionId === _activeSectionId) {
+            // Pastikan section aktif benar-benar tampil
+            sec.removeAttribute('hidden');
+            if (sec.style.cssText.indexOf('display: none') > -1) {
+                sec.style.cssText = '';
+            }
+        } else {
+            // Pastikan section non-aktif benar-benar tersembunyi
+            sec.classList.remove('active');
+            sec.setAttribute('hidden', '');
+        }
+    }
+}
+
+// Jalankan enforcement setiap 500ms
+setInterval(enforceVisibility, 500);
+
+// PERBAIKAN: subTab juga diperkuat dengan style.display eksplisit
+function subTab(id, btn) {
+    var allSubs = document.querySelectorAll('.sub-content');
+    for (var i = 0; i < allSubs.length; i++) {
+        allSubs[i].style.display = 'none';
+    }
+    var target = document.getElementById(id);
+    if (target) target.style.display = 'block';
+
+    var allTabs = document.querySelectorAll('#penduduk .tab');
+    for (var j = 0; j < allTabs.length; j++) {
+        allTabs[j].classList.remove('active');
+    }
+    if (btn) btn.classList.add('active');
+}
+
+// =============================================
+// MODAL
+// =============================================
+function openModal(id) { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+function renderPhotoTable(tbodyId, dataArr, colName) {
+    const tbody = document.querySelector('#'+tbodyId+' tbody');
+    if(!tbody) return;
+    if(dataArr.length===0) { tbody.innerHTML='<tr><td colspan="4" style="text-align:center;color:#999;">Belum ada data.</td></tr>'; return; }
+    tbody.innerHTML = dataArr.map(item => `
+        <tr>
+            <td><img src="${item.photo||'https://cdn-icons-png.flaticon.com/512/921/921059.png'}" class="avatar-sm"></td>
+            <td>${item.nama||'-'}</td>
+            <td>${item.jabatan||'-'}</td>
+            <td class="admin-only"><button style="color:red;border:none;background:none;cursor:pointer;" onclick="delDoc('${colName}','${item.id}').then(()=>toast('Data dihapus'))"><i class="fas fa-trash"></i></button></td>
+        </tr>
+    `).join('');
+}
+
+// =============================================
+// PEMERINTAH
+// =============================================
+function loadPemerintah() { renderPhotoTable('tablePemerintah', arrData.pemerintah, 'Maero_pemerintah'); }
+async function savePemerintah() {
+    const nama=document.getElementById('pem_nama').value, jab=document.getElementById('pem_jabatan').value, file=document.getElementById('pem_foto').files[0];
+    if(!nama||!jab) { toast('Nama dan Jabatan wajib diisi!','err'); return; }
+    try {
+        const photo = file ? await compressImg(file) : '';
+        await addDoc('Maero_pemerintah', {nama, jabatan:jab, photo});
+        closeModal('modalPemerintah');
+        document.getElementById('pem_nama').value=''; document.getElementById('pem_jabatan').value='';
+        toast('Perangkat Desa/Kel ditambahkan!');
+    } catch(e) { toast(e,'err'); }
+}
+
+// =============================================
+// POKJA
+// =============================================
+function loadPokja() { renderPhotoTable('tablePokja', arrData.pokja, 'Maero_pokja'); }
+async function savePokja() {
+    const nama=document.getElementById('pokja_nama').value;
+    let jab=document.getElementById('pokja_jabatan').value;
+    if(jab==='Seksi') jab+=': '+document.getElementById('pokja_seksi').value;
+    const file=document.getElementById('pokja_foto').files[0];
+    if(!nama) { toast('Nama wajib diisi!','err'); return; }
+    try {
+        const photo = file ? await compressImg(file) : '';
+        await addDoc('Maero_pokja', {nama, jabatan:jab, photo});
+        closeModal('modalPokja');
+        document.getElementById('pokja_nama').value=''; document.getElementById('pokja_seksi').value='';
+        toast('Pengurus POKJA ditambahkan!');
+    } catch(e) { toast(e,'err'); }
+}
+document.getElementById('pokja_jabatan').addEventListener('change', function(){ document.getElementById('pokja_seksi').style.display = this.value==='Seksi'?'block':'none'; });
+
+// =============================================
+// RUMAH DATA
+// =============================================
+function loadRumahData() { renderPhotoTable('tableRumahData', arrData.rumahdata, 'Maero_rumahdata'); }
+async function saveRumahData() {
+    const nama=document.getElementById('rd_nama').value, jab=document.getElementById('rd_jabatan').value, file=document.getElementById('rd_foto').files[0];
+    if(!nama) { toast('Nama wajib diisi!','err'); return; }
+    try {
+        const photo = file ? await compressImg(file) : '';
+        await addDoc('Maero_rumahdata', {nama, jabatan:jab, photo});
+        closeModal('modalRumahData');
+        document.getElementById('rd_nama').value='';
+        toast('Pengurus RUMAH DATAku ditambahkan!');
+    } catch(e) { toast(e,'err'); }
+}
+
+// =============================================
+// POKTAN
+// =============================================
+function loadPoktan() {
+    const p=cfg.poktan;
+    document.getElementById('poktan_bkb').value=p.bkb||0;
+    document.getElementById('poktan_bkr').value=p.bkr||0;
+    document.getElementById('poktan_bkl').value=p.bkl||0;
+    document.getElementById('poktan_ks').value=p.ks||0;
+    document.getElementById('poktan_genting').value=p.genting||0;
+    document.getElementById('poktan_tamasya').value=p.tamasya||0;
+    document.getElementById('poktan_sidaya').value=p.sidaya||0;
+    document.getElementById('poktan_gati').value=p.gati||0;
+    const tbody=document.querySelector('#tablePoktan tbody');
+    if(tbody) tbody.innerHTML=`
+        <tr><td>IKUT BKB</td><td>${p.bkb||0}</td></tr><tr><td>IKUT BKR</td><td>${p.bkr||0}</td></tr>
+        <tr><td>IKUT BKL</td><td>${p.bkl||0}</td></tr><tr><td>IKUT SATYAGATRA</td><td>${p.ks||0}</td></tr>
+        <tr style="font-weight:bold;background:#f9f9f9;"><td>QUICK WIN</td><td></td></tr>
+        <tr><td>Genting</td><td>${p.genting||0}</td></tr><tr><td>Tamasya</td><td>${p.tamasya||0}</td></tr>
+        <tr><td>Sidaya</td><td>${p.sidaya||0}</td></tr><tr><td>Gati</td><td>${p.gati||0}</td></tr>`;
+}
+async function savePoktan() {
+    cfg.poktan.bkb=parseInt(document.getElementById('poktan_bkb').value)||0;
+    cfg.poktan.bkr=parseInt(document.getElementById('poktan_bkr').value)||0;
+    cfg.poktan.bkl=parseInt(document.getElementById('poktan_bkl').value)||0;
+    cfg.poktan.ks=parseInt(document.getElementById('poktan_ks').value)||0;
+    cfg.poktan.genting=parseInt(document.getElementById('poktan_genting').value)||0;
+    cfg.poktan.tamasya=parseInt(document.getElementById('poktan_tamasya').value)||0;
+    cfg.poktan.sidaya=parseInt(document.getElementById('poktan_sidaya').value)||0;
+    cfg.poktan.gati=parseInt(document.getElementById('poktan_gati').value)||0;
+    await saveConfig();
+}
+
+// =============================================
+// MAP
+// =============================================
+// =============================================
+// NUCLEAR FIX: Kartu Biru & Peta TIDAK ADA di HTML.
+// Mereka hanya diciptakan saat menu Profil diklik,
+// dan dihapus saat pindah menu lain.
+// =============================================
+var _profilInjected = false;
+
+function injectProfilElements() {
+    if (_profilInjected) return; // sudah ada, jangan duplikat
+    _profilInjected = true;
+
+    var slot = document.getElementById('profilDynamicSlot');
+    if (!slot) return;
+
+    // === 1. Kartu Biru Selamat Datang ===
+    var blueCard = document.createElement('div');
+    blueCard.className = 'card';
+    blueCard.style.cssText = 'background:linear-gradient(135deg,#007bff 0%,#0056b3 100%);color:white;';
+    blueCard.innerHTML = '<h2 style=\"margin-bottom:10px;\">Selamat Datang di RUMAH DATAku</h2>' +
+        '<h3 style=\"margin-bottom:20px;font-weight:300;\">DESA MAERO</h3>' +
+        '<p><strong>Definisi:</strong> Rumah Data adalah pusat data dan informasi desa/Kelurahan yang terintegrasi, transparan, dan akuntabel sebagai dasar perencanaan pembangunan.</p>' +
+        '<p style=\"margin-top:10px;\"><strong>Manfaat:</strong> Mempermudah perencanaan, monitoring, dan evaluasi program pembangunan secara partisipatif.</p>';
+    slot.appendChild(blueCard);
+
+    // === 2. Peta Wilayah ===
+    var mapCard = document.createElement('div');
+    mapCard.className = 'card';
+    mapCard.innerHTML = '<div class=\"card-header\"><h4 class=\"card-title\">Peta Wilayah Desa Maero</h4></div>' +
+        '<div id=\"mapAdminBox\" class=\"admin-only\" style=\"margin-bottom:15px;padding:15px;background:#f8f9fa;border-radius:8px;border:1px dashed #ccc;\">' +
+            '<label style=\"display:block;font-weight:600;margin-bottom:5px;color:#333;\">Link Google Maps (Embed):</label>' +
+            '<input type=\"text\" id=\"mapLink\" placeholder=\"https://www.google.com/maps/embed?pb=!1m18...\" style=\"width:100%;\">' +
+            '<button class=\"btn-full btn-primary btn-sm\" onclick=\"saveMap()\" style=\"margin-top:10px;\">Simpan Peta</button>' +
+        '</div>' +
+        '<iframe id=\"mapDisplay\" class=\"map-frame\" src=\"\"></iframe>';
+    slot.appendChild(mapCard);
+
+    // === 3. Struktur Pemerintahan ===
+    var pemCard = document.createElement('div');
+    pemCard.className = 'card';
+    pemCard.innerHTML = '<div class=\"card-header\">' +
+        '<h4 class=\"card-title\">Struktur Pemerintahan Desa/Kelurahan</h4>' +
+        '<button class=\"btn-full btn-primary btn-sm admin-only\" onclick=\"openModal(\'modalPemerintah\')\">+ Tambah Perangkat</button>' +
+        '</div>' +
+        '<div class=\"table-responsive\"><table id=\"tablePemerintah\"><thead><tr><th>Foto</th><th>Nama</th><th>Jabatan</th><th class=\"admin-only\">Aksi</th></tr></thead><tbody></tbody></table></div>';
+    slot.appendChild(pemCard);
+
+    // === 4. Pengurus POKJA ===
+    var pokjaCard = document.createElement('div');
+    pokjaCard.className = 'card';
+    pokjaCard.innerHTML = '<div class=\"card-header\">' +
+        '<h4 class=\"card-title\">Pengurus POKJA Kampung KB</h4>' +
+        '<button class=\"btn-full btn-primary btn-sm admin-only\" onclick=\"openModal(\'modalPokja\')\">+ Tambah Pengurus</button>' +
+        '</div>' +
+        '<div class=\"table-responsive\"><table id=\"tablePokja\"><thead><tr><th>Foto</th><th>Nama</th><th>Jabatan/Seksi</th><th class=\"admin-only\">Aksi</th></tr></thead><tbody></tbody></table></div>';
+    slot.appendChild(pokjaCard);
+
+    // === 5. Pengurus RUMAH DATAku ===
+    var rdCard = document.createElement('div');
+    rdCard.className = 'card';
+    rdCard.innerHTML = '<div class=\"card-header\">' +
+        '<h4 class=\"card-title\">Pengurus RUMAH DATAku</h4>' +
+        '<button class=\"btn-full btn-primary btn-sm admin-only\" onclick=\"openModal(\'modalRumahData\')\">+ Tambah Pengurus</button>' +
+        '</div>' +
+        '<div class=\"table-responsive\"><table id=\"tableRumahData\"><thead><tr><th>Foto</th><th>Nama</th><th>Jabatan/Seksi</th><th class=\"admin-only\">Aksi</th></tr></thead><tbody></tbody></table></div>';
+    slot.appendChild(rdCard);
+
+    // Load data dari Firebase setelah semua elemen dibuat
+    loadMap();
+    loadPemerintah();
+    loadPokja();
+    loadRumahData();
+}
+
+function removeProfilElements() {
+    if (!_profilInjected) return;
+    _profilInjected = false;
+
+    var slot = document.getElementById('profilDynamicSlot');
+    if (!slot) return;
+    slot.innerHTML = '';
+}
+
+function loadMap() {
+    var linkEl = document.getElementById('mapLink');
+    var mapEl = document.getElementById('mapDisplay');
+    if (linkEl && mapEl) {
+        linkEl.value = cfg.mapLink || '';
+        mapEl.src = cfg.mapLink || '';
+    }
+}
+async function saveMap() {
+    var linkEl = document.getElementById('mapLink');
+    if (linkEl) {
+        cfg.mapLink = linkEl.value;
+        await saveConfig();
+    }
+}
+
+// =============================================
+// KUANTITAS
+// =============================================
+function loadKuantitas() {
+    document.getElementById('in_kk').value=cfg.kk;
+    document.getElementById('in_lk').value=cfg.lk;
+    document.getElementById('in_pr').value=cfg.pr;
+    document.getElementById('in_jiwa').value=cfg.lk+cfg.pr;
+    document.getElementById('in_note_kuantitas').value=cfg.note||'';
+    document.querySelectorAll('.age-input').forEach(inp => { inp.value=cfg.umur[inp.getAttribute('data-age')]||0; });
+    const tbody=document.querySelector('#tableUmur');
+    if(tbody) tbody.innerHTML='<thead><tr><th>Umur</th><th>Jumlah</th></tr></thead>'+Object.keys(cfg.umur).sort().map(k=>`<tr><td>${k} Thn</td><td>${cfg.umur[k]}</td></tr>`).join('');
+}
+function hitungJiwa() {
+    const l=parseInt(document.getElementById('in_lk').value)||0, p=parseInt(document.getElementById('in_pr').value)||0;
+    document.getElementById('in_jiwa').value=l+p;
+}
+async function saveKuantitas() {
+    cfg.kk=parseInt(document.getElementById('in_kk').value)||0;
+    cfg.lk=parseInt(document.getElementById('in_lk').value)||0;
+    cfg.pr=parseInt(document.getElementById('in_pr').value)||0;
+    cfg.note=document.getElementById('in_note_kuantitas').value;
+    document.querySelectorAll('.age-input').forEach(inp => { cfg.umur[inp.getAttribute('data-age')]=parseInt(inp.value)||0; });
+    await saveConfig();
+}
+
+// =============================================
+// KUALITAS
+// =============================================
+function loadKualitas() {
+    ['kb_baru','kb_ganti','kb_ulang','k_bumil','k_baduta','k_balita'].forEach(id => {
+        const el=document.getElementById(id);
+        if(el) el.value=cfg.kesehatan[id.replace('k_','')]||0;
+    });
+    const h=cfg.kesehatan;
+    const tKes=document.getElementById('tableKesehatan');
+    if(tKes) tKes.innerHTML=`<tr><td>KB Baru</td><td>${h.baru}</td></tr><tr><td>Ganti Cara</td><td>${h.ganti}</td></tr><tr><td>Ulangan</td><td>${h.ulang}</td></tr><tr><td>Bumil</td><td>${h.bumil}</td></tr><tr><td>Baduta</td><td>${h.baduta}</td></tr><tr><td>Balita</td><td>${h.balita}</td></tr>`;
+    const p=cfg.pendidikan;
+    const tPen=document.getElementById('tablePendidikan');
+    if(tPen) tPen.innerHTML=`<tr><td>7-12 (SD)</td><td>${p.sd}</td></tr><tr><td>13-15 (SMP)</td><td>${p.smp}</td></tr><tr><td>16-18 (SMA)</td><td>${p.sma}</td></tr><tr><td>Perguruan Tinggi</td><td>${p.pt}</td></tr>`;
+}
+async function saveKualitasKesehatan() {
+    cfg.kesehatan.baru=parseInt(document.getElementById('kb_baru').value)||0;
+    cfg.kesehatan.ganti=parseInt(document.getElementById('kb_ganti').value)||0;
+    cfg.kesehatan.ulang=parseInt(document.getElementById('kb_ulang').value)||0;
+    cfg.kesehatan.bumil=parseInt(document.getElementById('k_bumil').value)||0;
+    cfg.kesehatan.baduta=parseInt(document.getElementById('k_baduta').value)||0;
+    cfg.kesehatan.balita=parseInt(document.getElementById('k_balita').value)||0;
+    await saveConfig();
+}
+
+// =============================================
+// FASUM
+// =============================================
+function loadFasum() {
+    const tbody=document.querySelector('#tableFasum tbody');
+    if(!tbody) return;
+    if(arrData.fasum.length===0) { tbody.innerHTML='<tr><td colspan="4" style="text-align:center;color:#999;">Belum ada data.</td></tr>'; return; }
+    tbody.innerHTML=arrData.fasum.map(f=>`<tr><td>${f.type||'-'}</td><td>${f.name||'-'}</td><td>${f.addr||'-'}</td><td class="admin-only"><button style="color:red;border:none;background:none;cursor:pointer;" onclick="delDoc('Maero_fasum','${f.id}')"><i class="fas fa-trash"></i></button></td></tr>`).join('');
+}
+async function addFasum() {
+    const n=document.getElementById('fasum_name').value, t=document.getElementById('fasum_type').value, a=document.getElementById('fasum_addr').value;
+    if(!n) { toast('Nama fasilitas wajib diisi!','err'); return; }
+    await addDoc('Maero_fasum', {name:n,type:t,addr:a});
+    document.getElementById('fasum_name').value=''; document.getElementById('fasum_addr').value='';
+}
+
+// =============================================
+// PENDIDIKAN & PEKERJAAN
+// =============================================
+async function editPendidikan() {
+    cfg.pendidikan.sd=parseInt(prompt('Jumlah SD:',cfg.pendidikan.sd))||0;
+    cfg.pendidikan.smp=parseInt(prompt('Jumlah SMP:',cfg.pendidikan.smp))||0;
+    cfg.pendidikan.sma=parseInt(prompt('Jumlah SMA:',cfg.pendidikan.sma))||0;
+    cfg.pendidikan.pt=parseInt(prompt('Perguruan Tinggi:',cfg.pendidikan.pt))||0;
+    await saveConfig();
+}
+async function editPekerjaan() {
+    Object.keys(cfg.pekerjaan).forEach(k => { cfg.pekerjaan[k]=parseInt(prompt('Jumlah '+k+':',cfg.pekerjaan[k]))||0; });
+    await saveConfig();
+}
+
+// =============================================
+// SDM
+// =============================================
+function loadSDM() {
+    const s=cfg.sdm;
+    document.getElementById('sdm_kb').value=s.kb||0;
+    document.getElementById('sdm_pkk').value=s.pkk||0;
+    document.getElementById('sdm_tpk').value=s.tpk||0;
+    document.getElementById('sdm_pos').value=s.pos||0;
+    document.getElementById('sdm_lain').value=s.lain||0;
+    const tbody=document.querySelector('#tableSDM tbody');
+    if(tbody) tbody.innerHTML=`<tr><td>Kader KB</td><td>${s.kb||0}</td></tr><tr><td>Kader PKK</td><td>${s.pkk||0}</td></tr><tr><td>Kader TPK</td><td>${s.tpk||0}</td></tr><tr><td>Kader Posyandu</td><td>${s.pos||0}</td></tr><tr><td>Lainnya</td><td>${s.lain||0}</td></tr>`;
+}
+async function saveSDM() {
+    cfg.sdm.kb=parseInt(document.getElementById('sdm_kb').value)||0;
+    cfg.sdm.pkk=parseInt(document.getElementById('sdm_pkk').value)||0;
+    cfg.sdm.tpk=parseInt(document.getElementById('sdm_tpk').value)||0;
+    cfg.sdm.pos=parseInt(document.getElementById('sdm_pos').value)||0;
+    cfg.sdm.lain=parseInt(document.getElementById('sdm_lain').value)||0;
+    await saveConfig();
+}
+
+// =============================================
+// RENCANA AKSI
+// =============================================
+function loadRencana() {
+    const tbody=document.querySelector('#tableRencana tbody');
+    if(!tbody) return;
+    if(arrData.rencana.length===0) { tbody.innerHTML='<tr><td colspan="4" style="text-align:center;color:#999;">Belum ada rencana aksi.</td></tr>'; return; }
+    tbody.innerHTML=arrData.rencana.map(r=>`<tr><td>${r.pelaku||'-'}</td><td>${r.text||'-'}</td><td>${r.date||'-'}</td><td class="admin-only"><button style="color:red;border:none;background:none;cursor:pointer;" onclick="delDoc('Maero_rencana','${r.id}')"><i class="fas fa-trash"></i></button></td></tr>`).join('');
+}
+async function addRencana() {
+    const p=document.getElementById('rencana_pelaku').value, t=document.getElementById('rencana_text').value, d=document.getElementById('rencana_date').value;
+    if(!t||!d) { toast('Rencana dan Tanggal wajib diisi!','err'); return; }
+    await addDoc('Maero_rencana', {pelaku:p,text:t,date:d});
+    document.getElementById('rencana_text').value=''; document.getElementById('rencana_date').value='';
+}
+
+// =============================================
+// GALERI
+// =============================================
+function loadGallery() {
+    const c=document.getElementById('galleryContainer');
+    if(!c) return;
+    if(arrData.galeri.length===0) { c.innerHTML='<p style="grid-column:1/-1;text-align:center;color:#999;">Belum ada foto.</p>'; return; }
+    c.innerHTML=arrData.galeri.map((g,i)=>`
+        <div class="gallery-item">
+            <button class="delete-btn admin-only" onclick="delDoc('Maero_galeri','${g.id}')"><i class="fas fa-times"></i></button>
+            <img src="${g.src}" class="gallery-img" onclick="window.open('${g.src}')">
+            <div class="gallery-info"><span class="gallery-caption">${g.desc||'-'}</span><small style="color:#777;">${g.date||''}</small></div>
+        </div>`).join('');
+}
+async function uploadGallery() {
+    const desc=document.getElementById('gal_desc').value, files=document.getElementById('gal_files').files;
+    if(!files.length) { toast('Pilih minimal satu foto!','err'); return; }
+    let count=0;
+    for(const file of Array.from(files)) {
+        try {
+            const src = await compressImg(file, 500, 0.5);
+            await addDoc('Maero_galeri', {src, desc:desc||'Dokumentasi', date:new Date().toLocaleDateString()});
+            count++;
+        } catch(e) { toast('Gagal upload foto: '+e, 'err'); }
+    }
+    if(count>0) { toast(count+' foto berhasil diupload!'); document.getElementById('gal_desc').value=''; document.getElementById('gal_files').value=''; }
+}
+
+// =============================================
+// PKK REPORTS
+// =============================================
+function loadPKKReports() {
+    const c=document.getElementById('pkk_list');
+    if(!c) return;
+    if(arrData.pkk_reports.length===0) { c.innerHTML='<p style="grid-column:1/-1;text-align:center;color:#999;">Belum ada laporan kegiatan PKK.</p>'; return; }
+    c.innerHTML=arrData.pkk_reports.map(item=>`
+        <div class="gallery-item">
+            <button class="delete-btn admin-only" onclick="delDoc('Maero_pkk','${item.id}')"><i class="fas fa-trash"></i></button>
+            <img src="${item.photo}" class="gallery-img" onclick="window.open('${item.photo}')">
+            <div class="gallery-info">
+                <span class="gallery-caption">${item.title||'-'}</span>
+                <span style="font-size:.75rem;color:#888;"><i class="far fa-calendar-alt"></i> ${item.date||''}</span>
+                <p style="font-size:.85rem;color:#555;margin-top:5px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;">${item.desc||''}</p>
+            </div>
+        </div>`).join('');
+}
+async function addPKKReport() {
+    const date=document.getElementById('pkk_date').value, title=document.getElementById('pkk_title').value, desc=document.getElementById('pkk_desc').value, file=document.getElementById('pkk_photo').files[0];
+    if(!title||!date||!file) { toast('Judul, Tanggal, dan Foto wajib diisi!','err'); return; }
+    try {
+        const photo = await compressImg(file, 500, 0.5);
+        await addDoc('Maero_pkk', {date,title,desc,photo});
+        document.getElementById('pkk_title').value=''; document.getElementById('pkk_desc').value=''; document.getElementById('pkk_date').value=''; document.getElementById('pkk_photo').value='';
+        toast('Laporan PKK ditambahkan!');
+    } catch(e) { toast(e,'err'); }
+}
+
+// =============================================
+// SARAN
+// =============================================
+function loadSaran() {
+    const list=document.getElementById('saranList');
+    if(!list) return;
+    if(arrData.saran.length===0) { list.innerHTML=''; return; }
+    list.innerHTML=arrData.saran.map(s=>`
+        <div class="guest-entry">
+            <strong>${s.name||'-'}</strong> <small style="float:right;color:#888;">${s.date||''}</small>
+            <p style="margin-top:5px;">${s.msg||'-'}</p>
+        </div>`).join('');
+}
+async function addSaran() {
+    const n=document.getElementById('guest_name').value, m=document.getElementById('guest_msg').value;
+    if(!n||!m) { toast('Nama dan Pesan wajib diisi!','err'); return; }
+    await addDoc('Maero_saran', {name:n,msg:m,date:new Date().toLocaleDateString()});
+    document.getElementById('guest_name').value=''; document.getElementById('guest_msg').value='';
+}
+
+// =============================================
+// DATA LAINNYA
+// =============================================
+function loadDataLain() {
+    const tbody=document.querySelector('#tableLain tbody');
+    if(!tbody) return;
+    if(arrData.lainnya.length===0) { tbody.innerHTML='<tr><td colspan="4" style="text-align:center;color:#999;">Belum ada data.</td></tr>'; return; }
+    tbody.innerHTML=arrData.lainnya.map(l=>`<tr><td>${l.judul||'-'}</td><td>${l.sumber||'-'}</td><td>${l.isi||'-'}</td><td class="admin-only"><button style="color:red;border:none;background:none;cursor:pointer;" onclick="delDoc('Maero_lainnya','${l.id}')"><i class="fas fa-trash"></i></button></td></tr>`).join('');
+}
+async function addDataLain() {
+    const j=document.getElementById('lain_judul').value, s=document.getElementById('lain_sumber').value, i=document.getElementById('lain_isi').value;
+    if(!j) { toast('Judul data wajib diisi!','err'); return; }
+    await addDoc('Maero_lainnya', {judul:j,sumber:s,isi:i});
+    document.getElementById('lain_judul').value=''; document.getElementById('lain_sumber').value=''; document.getElementById('lain_isi').value='';
+}
+
+// =============================================
+// DASHBOARD & CHARTS
+// =============================================
+function updateDashboard() {
+    document.getElementById('d_jiwa').innerText=cfg.lk+cfg.pr;
+    document.getElementById('d_kk').innerText=cfg.kk;
+    document.getElementById('d_kader').innerText=(cfg.sdm.kb||0)+(cfg.sdm.pkk||0)+(cfg.sdm.tpk||0)+(cfg.sdm.pos||0)+(cfg.sdm.lain||0);
+    document.getElementById('d_posyandu').innerText=arrData.fasum.filter(f=>f.type==='Posyandu').length;
+}
+
+let charts={};
+function renderCharts() {
+    const getCtx=id=>{ const el=document.getElementById(id); return el?el.getContext('2d'):null; };
+
+    const ctxG=getCtx('chartGender');
+    if(ctxG){ if(charts.gender) charts.gender.destroy(); charts.gender=new Chart(ctxG,{type:'doughnut',data:{labels:['Lk','Pr'],datasets:[{data:[cfg.lk,cfg.pr],backgroundColor:['#007bff','#ffc107']}]},options:{maintainAspectRatio:false,plugins:{title:{display:true,text:'Gender'}}}}); }
+
+    const uKeys=Object.keys(cfg.umur).sort(), uVals=uKeys.map(k=>cfg.umur[k]);
+    const ctxP=getCtx('chartPiramida');
+    if(ctxP){ if(charts.piramida) charts.piramida.destroy(); charts.piramida=new Chart(ctxP,{type:'bar',data:{labels:uKeys,datasets:[{label:'Jiwa',data:uVals,backgroundColor:'#007bff'}]},options:{indexAxis:'y',maintainAspectRatio:false,scales:{x:{beginAtZero:true}}}}); }
+
+    const ctxK=getCtx('chartKuantitasDetail');
+    if(ctxK){ if(charts.kuan) charts.kuan.destroy(); charts.kuan=new Chart(ctxK,{type:'bar',data:{labels:uKeys,datasets:[{label:'Penduduk',data:uVals,backgroundColor:'#17a2b8'}]},options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true}}}}); }
+
+    const ctxKes=getCtx('chartKesehatan');
+    if(ctxKes){ if(charts.kes) charts.kes.destroy(); charts.kes=new Chart(ctxKes,{type:'bar',data:{labels:['Baru','Ganti','Ulang','Bumil','Baduta','Balita'],datasets:[{data:Object.values(cfg.kesehatan),backgroundColor:'#28a745'}]},options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true}}}}); }
+
+    const ctxJob=getCtx('chartPekerjaan');
+    if(ctxJob){ if(charts.job) charts.job.destroy(); charts.job=new Chart(ctxJob,{type:'pie',data:{labels:Object.keys(cfg.pekerjaan),datasets:[{data:Object.values(cfg.pekerjaan),backgroundColor:['#dc3545','#ffc107','#17a2b8','#28a745','#6610f2','#6c757d']}]},options:{maintainAspectRatio:false}}); }
+}
+
+// =============================================
+// INIT — Pastikan hanya Dashboard yang tampil saat pertama kali
+// =============================================
+window.onload = function() {
+    // PERBAIKAN TRIPLE-LOCK: 
+    // 1) Bersihkan semua inline style lama dari section
+    // 2) Sembunyikan semua section via classList + hidden attribute
+    // 3) Tampilkan hanya Dashboard
+    var allSections = document.querySelectorAll('.content-section');
+    for (var i = 0; i < allSections.length; i++) {
+        allSections[i].style.cssText = '';  // bersihkan inline style
+        allSections[i].classList.remove('active');
+        allSections[i].setAttribute('hidden', '');
+    }
+    // Tampilkan hanya Dashboard
+    var dashboard = document.getElementById('dashboard');
+    if (dashboard) {
+        dashboard.classList.add('active');
+        dashboard.removeAttribute('hidden');
+    }
+    _activeSectionId = 'dashboard';
+
+    // Pastikan elemen profil TIDAK ada saat pertama kali load
+    removeProfilElements();
+
+    // Jalankan enforcement pertama
+    enforceVisibility();
+
+    startListeners();
+    var role = sessionStorage.getItem('role');
+    if(role) {
+        document.getElementById('loginOverlay').style.display='none';
+        if(role==='admin') { document.body.classList.add('is-admin'); updateAuthUI(true); }
+        else updateAuthUI(false);
+    } else {
+        document.getElementById('loginOverlay').style.display='flex';
+        updateAuthUI(false);
+    }
+};
+</script>
+</body>
+</html>
